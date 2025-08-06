@@ -1,28 +1,37 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
 
-import { NewAppScreen } from '@react-native/new-app-screen';
-import { StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
+import Home from './src/Screens/home';
+import Connect from './src/Screens/Connect';
+import ConnectedDevices from './src/Screens/ConnectedDevices';
+import { ConnectedDevicesProvider } from './src/ConnectedDevicesContext';
 
-function App() {
-  const isDarkMode = useColorScheme() === 'dark';
+const Stack = createStackNavigator();
 
+export default function App() {
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <NewAppScreen templateFileName="App.tsx" />
-    </View>
+    <ConnectedDevicesProvider>
+      <NavigationContainer>
+        <Stack.Navigator initialRouteName="Home">
+          <Stack.Screen
+            name="Home"
+            component={Home}
+            options={{ title: 'Home' }}
+          />
+          <Stack.Screen
+            name="Connect"
+            component={Connect}
+            options={{ title: 'BLE Connect' }}
+          />
+          <Stack.Screen
+            name="ConnectedDevices"
+            component={ConnectedDevices}
+            options={{ title: 'Connected Devices' }}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </ConnectedDevicesProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-});
-
-export default App;
