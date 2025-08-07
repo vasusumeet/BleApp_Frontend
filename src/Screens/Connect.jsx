@@ -3,9 +3,10 @@ import {
   FlatList, TouchableOpacity, Modal, Pressable, Platform,
   PermissionsAndroid, Alert
 } from 'react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import { BleManager } from 'react-native-ble-plx';
+import { ConnectedDevicesContext } from '../ConnectedDevicesContext'; // ADD THIS
 
 const manager = new BleManager();
 
@@ -15,6 +16,9 @@ const Connect = () => {
   const [scanning, setScanning] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
+
+  // Pull addConnectedDevice from context
+  const { addConnectedDevice } = useContext(ConnectedDevicesContext); // ADD THIS
 
   useEffect(() => {
     checkPermissions();
@@ -94,8 +98,9 @@ const Connect = () => {
 
   const connectToDevice = async (device) => {
     try {
-      const connected = await manager.connectToDevice(device.id);
-      Alert.alert('Connected', `Connected to ${getDeviceName(connected)} (${connected.id})`);
+      const connectedDevice = await manager.connectToDevice(device.id);
+      addConnectedDevice(connectedDevice); // <<== ADD THIS
+      Alert.alert('Connected', `Connected to ${getDeviceName(connectedDevice)} (${connectedDevice.id})`);
     } catch (e) {
       Alert.alert('Connection failed', e.message);
     }
@@ -103,7 +108,7 @@ const Connect = () => {
 
   return (
     <View style={styles.container}>
-      
+
       <Text style={styles.header}>Connect</Text>
       <Button
         title={scanning ? 'Scanning...' : 'Start BLE Scan'}
@@ -111,7 +116,7 @@ const Connect = () => {
         disabled={scanning}
       />
       <Button
-      style={{padding:'10'}}
+        style={{ padding: '10' }}
         title="View Connected Devices"
         onPress={() => navigation.navigate('ConnectedDevices')}
       />
