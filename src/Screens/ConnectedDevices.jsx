@@ -1,19 +1,49 @@
-import React, { useContext, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Button } from 'react-native';
+import React, { useContext, useState, useRef, useEffect } from 'react';
+import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Button, ActivityIndicator } from 'react-native';
 import { ConnectedDevicesContext } from '../ConnectedDevicesContext';
 import { BleManager } from 'react-native-ble-plx';
+import { Buffer } from 'buffer';
 
 const manager = new BleManager();
+
+const SERVICE_UUID = '12345678-1234-4321-1234-56789ABCDEF0';      
+const PASSWORD_CHAR_UUID = '12345678-1234-4321-1234-56789ABCDEF2'; 
+const DATA_CHAR_UUID = '12345678-1234-4321-1234-56789ABCDEF1';     
+const PASSWORD_VALUE = 'swe123';                                   
 
 const getDeviceName = device => device.name || device.localName || 'Unnamed';
 
 const ConnectedDevices = () => {
   const { connectedDevices, removeConnectedDevice, deviceData, updateDeviceData } = useContext(ConnectedDevicesContext);
-  const [listeningOn, setListeningOn] = useState({}); // { [deviceId]: { service, char } }
-  const [exploreInfo, setExploreInfo] = useState({}); // { [deviceId]: { loading, services, error } }
-  const [showDetails, setShowDetails] = useState({}); // { [deviceId]: boolean }
+
+  const [sendingPassword, setSendingPassword] = useState({});
+  const [listening, setListening] = useState({});
+  const [subscriptionRefs, setSubscriptionRefs] = useState({});
+  const [receivedData, setReceivedData] = useState({});
+
+
+  useEffect(() => {
+    return () => {
+      Object.values(subscriptionRefs).forEach(sub => sub?.remove && sub.remove());
+    };
+  }, [subscriptionRefs]);
 
   const handleDisconnect = async (device) => {
+  
+    if (subscriptionRefs[device.id]) {
+      subscriptionRefs[device.id].remove();
+    }
+    
+    setSubscriptionRefs(prev => {
+      const p = { ...prev };
+      delete p[device.id];
+      return p;
+    });
+    setListening(prev => ({ ...prev, [device.id]: false }));
+    setSendingPassword(prev => ({ ...prev, [device.id]: false }));
+    setReceivedData(prev => ({ ...prev, [device.id]: null }));
+
+    // Disconnect device
     Alert.alert(
       'Disconnect Device',
       `Are you sure you want to disconnect ${getDeviceName(device)}?`,
@@ -36,135 +66,118 @@ const ConnectedDevices = () => {
     );
   };
 
-  const exploreDevice = async (device) => {
-    setExploreInfo(prev => ({ ...prev, [device.id]: { loading: true, services: [], error: '' } }));
-    setShowDetails(prev => ({ ...prev, [device.id]: true }));
+  const sendPassword = async (device) => {
+    setSendingPassword(prev => ({ ...prev, [device.id]: true }));
+    setReceivedData(prev => ({ ...prev, [device.id]: null }));
     try {
-      const fullDevice = await device.discoverAllServicesAndCharacteristics();
-      const services = await fullDevice.services();
-      let serviceList = [];
-      for (const service of services) {
-        const chars = await fullDevice.characteristicsForService(service.uuid);
-        serviceList.push({
-          uuid: service.uuid,
-          characteristics: chars.map(char => ({
-            uuid: char.uuid,
-            properties: char.properties || [],
-            isReadable: char.isReadable,
-            isWritableWithResponse: char.isWritableWithResponse,
-            isWritableWithoutResponse: char.isWritableWithoutResponse,
-            isNotifiable: char.isNotifiable,
-            isNotifying: char.isNotifying,
-            isIndicatable: char.isIndicatable
-          }))
-        });
-      }
-      setExploreInfo(prev => ({
-        ...prev,
-        [device.id]: { loading: false, services: serviceList, error: '' }
-      }));
+      await device.discoverAllServicesAndCharacteristics();
+      await device.writeCharacteristicWithResponseForService(
+        SERVICE_UUID,
+        PASSWORD_CHAR_UUID,
+        Buffer.from(PASSWORD_VALUE).toString('base64')
+      );
+      Alert.alert('Password sent!', 'Ready for Roll/Pitch notification');
+      setSendingPassword(prev => ({ ...prev, [device.id]: false }));
     } catch (err) {
-      setExploreInfo(prev => ({
-        ...prev,
-        [device.id]: { loading: false, services: [], error: err.message || String(err) }
-      }));
+      Alert.alert('Error sending password', err.message);
+      setSendingPassword(prev => ({ ...prev, [device.id]: false }));
     }
   };
 
-  // Subscribe to a specific characteristic and update context state live as data arrives
-  const startListening = async (device, serviceUuid, charUuid) => {
-    setListeningOn(prev => ({
-      ...prev,
-      [device.id]: { service: serviceUuid, char: charUuid }
-    }));
+ 
+  const listenForData = async (device) => {
+    setListening(prev => ({ ...prev, [device.id]: true }));
+    setReceivedData(prev => ({ ...prev, [device.id]: null }));
+
     try {
-      const fullDevice = await device.discoverAllServicesAndCharacteristics();
-      manager.monitorCharacteristicForDevice(
+      await device.discoverAllServicesAndCharacteristics();
+
+      
+      if (subscriptionRefs[device.id]) {
+        subscriptionRefs[device.id].remove();
+      }
+
+      let receivedChunks = [];
+
+      const subscription = manager.monitorCharacteristicForDevice(
         device.id,
-        serviceUuid,
-        charUuid,
+        SERVICE_UUID,
+        DATA_CHAR_UUID,
         (error, characteristic) => {
           if (error) {
-            Alert.alert('Listen Error', error.message);
-            setListeningOn(prev => ({ ...prev, [device.id]: null }));
+            Alert.alert('Listen error', error.message);
+            setListening(prev => ({ ...prev, [device.id]: false }));
             return;
           }
           if (characteristic?.value) {
-            // Decoding BLE value (adjust logic if your device sends binary, hex, or JSON)
-            const decoded = Buffer.from(characteristic.value, 'base64').toString('ascii');
-            updateDeviceData(device.id, decoded);
+            const asciiVal = Buffer.from(characteristic.value, 'base64').toString('ascii');
+            
+            receivedChunks.push(asciiVal);
+            setReceivedData(prev => ({ ...prev, [device.id]: asciiVal }));
+            updateDeviceData(device.id, asciiVal);  
           }
         }
       );
-      Alert.alert('Listening', `Listening to ${charUuid} from ${getDeviceName(device)}`);
+
+      setSubscriptionRefs(prev => ({ ...prev, [device.id]: subscription }));
+
+      
+      setTimeout(() => {
+        subscription.remove();
+        setSubscriptionRefs(prev => ({ ...prev, [device.id]: null }));
+        setListening(prev => ({ ...prev, [device.id]: false }));
+
+        
+        const collectedData = receivedChunks.join('\n');
+        setReceivedData(prev => ({ ...prev, [device.id]: collectedData }));
+        updateDeviceData(device.id, collectedData);
+
+        Alert.alert('Data Listening Complete', collectedData || 'No data received.');
+
+      }, 10000);
+
+      Alert.alert('Listening', `Listening for Data on ${DATA_CHAR_UUID} for 10 seconds`);
     } catch (err) {
-      Alert.alert('Error', err.message);
-      setListeningOn(prev => ({ ...prev, [device.id]: null }));
+      Alert.alert('Error starting listener', err.message);
+      setListening(prev => ({ ...prev, [device.id]: false }));
     }
   };
 
-  // UI: Service/Characteristic explorer, use FlatList
-  const renderServiceDetails = (deviceId, device) => {
-    const info = exploreInfo[deviceId];
-    if (!info) return null;
-    if (info.loading) return <Text style={styles.dataLabel}>Loading services...</Text>;
-    if (info.error) return <Text style={{ color: 'red' }}>Error: {info.error}</Text>;
-    if (!info.services.length) return <Text style={styles.dataLabel}>No services found.</Text>;
+  
+  const renderDeviceItem = ({ item }) => (
+    <View style={styles.deviceItem}>
+      <Text style={styles.name}>{getDeviceName(item)}</Text>
+      <Text style={styles.id}>{item.id}</Text>
 
-    return (
-      <View style={{ marginTop: 6, maxHeight: 260 }}>
-        <Text style={styles.dataLabel}>Services and Characteristics:</Text>
-        <FlatList
-          data={info.services}
-          keyExtractor={service => service.uuid}
-          renderItem={({ item: service }) => (
-            <View style={{ marginBottom: 10 }}>
-              <Text style={styles.service}>Service: {service.uuid}</Text>
-              <FlatList
-                data={service.characteristics}
-                keyExtractor={char => char.uuid}
-                renderItem={({ item: char }) => (
-                  <View style={styles.characteristic}>
-                    <Text style={styles.charUuid}>↳ Characteristic: {char.uuid}</Text>
-                    <Text style={styles.charProps}>
-                      Props: {char.properties && char.properties.length
-                        ? char.properties.join(', ')
-                        : [
-                            'Readable', char.isReadable && 'Y',
-                            'Writable', (char.isWritableWithResponse || char.isWritableWithoutResponse) && 'Y',
-                            'Notifiable', (char.isNotifiable || char.isNotifying || char.isIndicatable) && 'Y'
-                          ].filter(Boolean).join(', ')
-                      }
-                    </Text>
-                    {(char.isNotifiable || char.isIndicatable) && (
-                      <Button
-                        title={
-                          (listeningOn[device.id] &&
-                          listeningOn[device.id].service === service.uuid &&
-                          listeningOn[device.id].char === char.uuid)
-                            ? "Listening..."
-                            : "Listen to Data"
-                        }
-                        onPress={() => startListening(device, service.uuid, char.uuid)}
-                        disabled={
-                          listeningOn[device.id] &&
-                          listeningOn[device.id].service === service.uuid &&
-                          listeningOn[device.id].char === char.uuid
-                        }
-                        color="#43a047"
-                      />
-                    )}
-                  </View>
-                )}
-                nestedScrollEnabled
-              />
-            </View>
-          )}
-          nestedScrollEnabled
+      {/* Show latest recorded data from notification/characteristic */}
+      <Text style={styles.dataLabel}>Latest Data:</Text>
+      <Text style={styles.dataValue}>
+        {receivedData[item.id] || deviceData[item.id] || 'No data yet.'}
+      </Text>
+
+      <TouchableOpacity style={styles.disconnectBtn} onPress={() => handleDisconnect(item)}>
+        <Text style={{ color: 'red' }}>Disconnect</Text>
+      </TouchableOpacity>
+
+      {/* Send password button */}
+      <Button
+        title={sendingPassword[item.id] ? 'Sending Password...' : 'Send Password'}
+        onPress={() => sendPassword(item)}
+        color="#0066cc"
+        disabled={sendingPassword[item.id] || listening[item.id]}
+      />
+
+      {/* Listen for Roll/Pitch data */}
+      <View style={{ marginTop: 10 }}>
+        <Button
+          title={listening[item.id] ? 'Listening...' : 'Listen for Data'}
+          onPress={() => listenForData(item)}
+          color="#43a047"
+          disabled={listening[item.id] || sendingPassword[item.id]}
         />
       </View>
-    );
-  };
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -175,32 +188,8 @@ const ConnectedDevices = () => {
         <FlatList
           data={connectedDevices}
           keyExtractor={item => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.deviceItem}>
-              <Text style={styles.name}>{getDeviceName(item)}</Text>
-              <Text style={styles.id}>{item.id}</Text>
-              <Text style={styles.dataLabel}>Latest Data:</Text>
-              <Text style={styles.dataValue}>
-                {deviceData[item.id] ? deviceData[item.id] : 'No data yet.'}
-              </Text>
-              <TouchableOpacity
-                style={styles.disconnectBtn}
-                onPress={() => handleDisconnect(item)}
-              >
-                <Text style={{ color: 'red' }}>Disconnect</Text>
-              </TouchableOpacity>
-              <Button
-                title={showDetails[item.id] ? "Hide Details" : "Explore Services"}
-                onPress={() =>
-                  showDetails[item.id]
-                    ? setShowDetails(prev => ({ ...prev, [item.id]: false }))
-                    : exploreDevice(item)
-                }
-                color="#0066cc"
-              />
-              {showDetails[item.id] && renderServiceDetails(item.id, item)}
-            </View>
-          )}
+          renderItem={renderDeviceItem}
+          contentContainerStyle={{ paddingBottom: 24 }}
         />
       )}
     </View>
@@ -211,16 +200,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, paddingTop: 40 },
   header: { fontSize: 22, fontWeight: '600', marginBottom: 18, alignSelf: 'center' },
   empty: { color: '#888', alignSelf: 'center', marginTop: 24 },
-  deviceItem: { padding: 14, borderBottomColor: '#ddd', borderBottomWidth: 1 },
+  deviceItem: { padding: 14, borderBottomColor: '#ddd', borderBottomWidth: 1, marginBottom: 8 },
   name: { fontWeight: '600', fontSize: 16 },
   id: { color: '#999', fontSize: 12, marginBottom: 4 },
-  dataLabel: { color: '#555', fontWeight: '500' },
+  dataLabel: { color: '#555', fontWeight: '500', marginTop: 8 },
   dataValue: { color: '#228b22', fontSize: 15, marginBottom: 8 },
   disconnectBtn: { alignSelf: 'flex-end', marginTop: 10 },
-  service: { fontWeight: 'bold', color: '#175199' },
-  characteristic: { paddingLeft: 14, marginBottom: 5 },
-  charUuid: { color: '#444', fontSize: 13 },
-  charProps: { color: '#996', fontSize: 12, marginLeft: 6, marginBottom: 4 }
 });
 
 export default ConnectedDevices;

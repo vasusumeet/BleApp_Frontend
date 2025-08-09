@@ -96,11 +96,12 @@ const Connect = () => {
   const dedupedDevices = [...new Map(devices.map(item => [item.id, item])).values()];
   const getDeviceName = device => device.name || device.localName || 'Unnamed';
 
-  const connectToDevice = async (device) => {
+  const connectToDevice = async (device, navigation) => {
     try {
       const connectedDevice = await manager.connectToDevice(device.id);
-      addConnectedDevice(connectedDevice); // <<== ADD THIS
+      addConnectedDevice(connectedDevice);
       Alert.alert('Connected', `Connected to ${getDeviceName(connectedDevice)} (${connectedDevice.id})`);
+
     } catch (e) {
       Alert.alert('Connection failed', e.message);
     }

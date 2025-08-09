@@ -14,7 +14,14 @@ const Home = ({ navigation }) => {
         title="View Connected Devices"
         onPress={() => navigation.navigate('ConnectedDevices')}
       />
+      <View style={{ height: 18 }} />
+      <Button
+        title="View Data"
+        onPress={() => navigation.navigate('ViewData')}
+        style={{ border:'30' }}
+      />
     </View>
+
   );
 };
 

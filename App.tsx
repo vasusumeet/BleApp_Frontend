@@ -7,6 +7,7 @@ import Home from './src/Screens/home';
 import Connect from './src/Screens/Connect';
 import ConnectedDevices from './src/Screens/ConnectedDevices';
 import { ConnectedDevicesProvider } from './src/ConnectedDevicesContext';
+import ViewData from './src/Screens/ViewData';
 
 const Stack = createStackNavigator();
 
@@ -29,6 +30,11 @@ export default function App() {
             name="ConnectedDevices"
             component={ConnectedDevices}
             options={{ title: 'Connected Devices' }}
+          />
+          <Stack.Screen
+            name="ViewData"
+            component={ViewData}
+            options={{ title: 'ViewData' }}
           />
         </Stack.Navigator>
       </NavigationContainer>
