@@ -8,6 +8,7 @@ import Connect from './src/Screens/Connect';
 import ConnectedDevices from './src/Screens/ConnectedDevices';
 import { ConnectedDevicesProvider } from './src/ConnectedDevicesContext';
 import ViewData from './src/Screens/ViewData';
+import AuthPage from './src/Screens/Authentication/authPage';
 
 const Stack = createStackNavigator();
 
@@ -15,7 +16,12 @@ export default function App() {
   return (
     <ConnectedDevicesProvider>
       <NavigationContainer>
-        <Stack.Navigator initialRouteName="Home">
+        <Stack.Navigator initialRouteName="AuthPage">
+          <Stack.Screen
+            name="AuthPage"
+            component={AuthPage}
+            options={{ title: 'AuthPage' }}
+          />
           <Stack.Screen
             name="Home"
             component={Home}

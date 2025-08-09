@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View, TextInput, TouchableOpacity } from 'react-native';
 import React, { useState } from 'react';
+// import GoogleSignin, statusCodes from '@react-native-google-signin/google-signin';
 
 const AuthPage = () => {
   const [isLogin, setIsLogin] = useState(true); // true=login, false=signup
@@ -8,16 +9,21 @@ const AuthPage = () => {
 
   // Placeholder handler for login & sign up
   const handleLogin = () => {
-    // TODO: Implement backend API integration
+    // backendAPI Here
     console.log('Login pressed:', { email, password });
   };
 
   const handleSignup = () => {
-    // TODO: Implement backend API integration
+    // backend API here
     console.log('Signup pressed:', { email, password });
   };
 
-  // Clear fields when switching
+  // Google Sign-In placeholder
+  const handleGoogleLogin = async () => {
+    // TODO: Integrate Google Sign-In logic here
+    console.log('Google Login pressed');
+  };
+
   const handleSwitch = () => {
     setIsLogin((prev) => !prev);
     setEmail('');
@@ -27,10 +33,11 @@ const AuthPage = () => {
   return (
     <View style={styles.container}>
       <Text style={styles.header}>{isLogin ? 'Login' : 'Sign Up'}</Text>
-      
+
       <TextInput
         style={styles.input}
         placeholder="Email"
+        placeholderTextColor="#666"
         autoCapitalize='none'
         value={email}
         onChangeText={setEmail}
@@ -38,6 +45,7 @@ const AuthPage = () => {
       <TextInput
         style={styles.input}
         placeholder="Password"
+        placeholderTextColor="#666"
         value={password}
         secureTextEntry
         onChangeText={setPassword}
@@ -56,6 +64,11 @@ const AuthPage = () => {
             ? "Don't have an account? Sign Up"
             : "Already have an account? Login"}
         </Text>
+      </TouchableOpacity>
+
+      {/* Google Login Button */}
+      <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
+        <Text style={styles.googleButtonText}>Login with Google</Text>
       </TouchableOpacity>
     </View>
   );
@@ -104,5 +117,18 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     marginTop: 4,
     fontSize: 15
+  },
+  googleButton: {
+    marginTop: 16,
+    backgroundColor: '#DB4437', // Google's red
+    padding: 13,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center'
+  },
+  googleButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 17,
   }
 });
